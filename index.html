@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>To-Do + Notes App</title>
+<style>
+  body { margin:0; font-family:"Segoe UI",Arial,sans-serif; display:flex; height:100vh; background:#f4f6f8; }
+  .sidebar { width:240px; background:#2d3436; color:#fff; display:flex; flex-direction:column; padding:1rem; }
+  .sidebar h2 { margin-bottom:1rem; font-size:20px; }
+  .menu button { display:flex; align-items:center; gap:8px; background:none; border:none; color:#fff; font-size:15px; padding:10px; margin-bottom:5px; border-radius:6px; cursor:pointer; }
+  .menu button.active, .menu button:hover { background:#636e72; }
+  .main { flex:1; display:flex; flex-direction:column; padding:1rem; }
+  header { display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; }
+  header input { padding:0.4rem 0.6rem; border-radius:6px; border:1px solid #ccc; font-size:14px; }
+  #list-title { font-size:20px; font-weight:bold; }
+  .tasks { flex:1; display:flex; flex-direction:column; gap:0.5rem; overflow-y:auto; }
+  .task { display:flex; justify-content:space-between; align-items:center; padding:0.8rem; border:1px solid #ddd; border-radius:8px; background:#fff; }
+  .task-left { display:flex; align-items:center; gap:10px; flex:1; }
+  .task .title { font-size:15px; }
+  .task.completed .title { text-decoration:line-through; color:#777; }
+  .priority { padding:2px 6px; border-radius:4px; font-size:11px; color:#fff; margin-left:6px; text-transform:capitalize; }
+  .low { background:#4caf50; }
+  .medium { background:#ff9800; }
+  .high { background:#f44336; }
+  .task small { color:#777; margin-left:8px; font-size:12px; }
+  footer { display:grid; grid-template-columns:1fr 120px 120px auto; gap:0.5rem; margin-top:1rem; }
+  footer input, footer select { padding:0.8rem; border-radius:8px; border:1px solid #ccc; font-size:14px; }
+  footer button { padding:0.8rem 1.2rem; border:none; border-radius:8px; background:#0984e3; color:white; font-size:14px; cursor:pointer; }
+  .journal { flex:1; display:none; flex-direction:column; gap:8px; overflow-y:auto; }
+  .journal h2 { margin-bottom:1rem; font-size:20px; color:#333; }
+  .journal-input { display:flex; gap:0.5rem; margin-bottom:1rem; }
+  .journal-input input { flex:1; padding:0.8rem; border:1px solid #ccc; border-radius:8px; font-size:14px; }
+  .journal-input button { padding:0.8rem 1.2rem; border:none; border-radius:8px; background:#27ae60; color:#fff; cursor:pointer; }
+  .note { padding:1rem; border:1px solid #ddd; border-radius:8px; background:#fafafa; display:flex; justify-content:space-between; align-items:center; }
+  .note button { border:none; background:none; cursor:pointer; font-size:16px; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <h2>Tasks</h2>
+  <div class="menu">
+    <button class="active" data-list="My Day">☀ <span>My Day</span></button>
+    <button data-list="Important">⭐ <span>Important</span></button>
+    <button data-list="Planned">📅 <span>Planned</span></button>
+    <button data-list="Groceries">🛒 <span>Groceries</span></button>
+    <button data-list="Work/Study">💼 <span>Work/Study</span></button>
+    <button data-list="Hobbies">🎨 <span>Hobbies</span></button>
+    <button data-list="Journal">📓 <span>Notes</span></button>
+  </div>
+</div>
+
+<div class="main">
+  <header>
+    <span id="list-title">My Day</span>
+    <input id="search" placeholder="Search tasks...">
+  </header>
+
+  <!-- Tasks -->
+  <div class="tasks" id="task-list"></div>
+
+  <!-- Journal -->
+  <div class="journal" id="journal">
+    <h2>My Notes</h2>
+    <div class="journal-input">
+      <input id="note-input" placeholder="Write a note...">
+      <button id="add-note">Add</button>
+    </div>
+    <div id="notes-list"></div>
+  </div>
+
+  <footer>
+    <input id="task-input" placeholder="Add a task...">
+    <input type="date" id="task-date">
+    <select id="task-priority">
+      <option value="low">Low</option>
+      <option value="medium" selected>Medium</option>
+      <option value="high">High</option>
+    </select>
+    <button id="add-task">Add Task</button>
+  </footer>
+</div>
+
+<script>
+const taskListEl = document.getElementById("task-list");
+const taskInput = document.getElementById("task-input");
+const taskDate = document.getElementById("task-date");
+const taskPriority = document.getElementById("task-priority");
+const addTaskBtn = document.getElementById("add-task");
+const listTitle = document.getElementById("list-title");
+const searchInput = document.getElementById("search");
+
+const journalEl = document.getElementById("journal");
+const notesList = document.getElementById("notes-list");
+const noteInput = document.getElementById("note-input");
+const addNoteBtn = document.getElementById("add-note");
+
+const listBtns = document.querySelectorAll(".menu button");
+const footer = document.querySelector("footer");
+
+let activeList = "My Day";
+let tasks = JSON.parse(localStorage.getItem("tasks")) || {};
+let notes = JSON.parse(localStorage.getItem("notes")) || [];
+
+function saveTasks(){ localStorage.setItem("tasks", JSON.stringify(tasks)); }
+function saveNotes(){ localStorage.setItem("notes", JSON.stringify(notes)); }
+
+function formatDate(d){ if(!d) return ""; const dt=new Date(d); return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); }
+
+function renderTasks(){
+  taskListEl.innerHTML = "";
+  const searchTerm = searchInput.value.toLowerCase();
+  (tasks[activeList]||[]).forEach((task,i)=>{
+    if(!task.text.toLowerCase().includes(searchTerm)) return;
+    const div=document.createElement("div");
+    div.className="task"+(task.completed?" completed":"");
+    div.innerHTML=`
+      <div class="task-left">
+        <input type="checkbox" class="task-check" ${task.completed?"checked":""}>
+        <span class="title">${task.text}</span>
+        <span class="priority ${task.priority}">${task.priority}</span>
+        <small>${formatDate(task.date)}</small>
+      </div>
+      <div>
+        <button class="delete-task">🗑</button>
+      </div>
+    `;
+    div.querySelector(".task-check").addEventListener("change",()=>{
+      task.completed=!task.completed;
+      saveTasks();
+      renderTasks();
+    });
+    div.querySelector(".delete-task").addEventListener("click",()=>{
+      tasks[activeList].splice(i,1);
+      saveTasks();
+      renderTasks();
+    });
+    taskListEl.appendChild(div);
+  });
+}
+
+function renderNotes(){
+  notesList.innerHTML="";
+  notes.forEach((note,i)=>{
+    const noteDiv=document.createElement("div");
+    noteDiv.className="note";
+    const span=document.createElement("span");
+    span.textContent=note;
+    const delBtn=document.createElement("button");
+    delBtn.textContent="🗑";
+    delBtn.addEventListener("click",()=>{
+      notes.splice(i,1);
+      saveNotes();
+      renderNotes();
+    });
+    noteDiv.appendChild(span);
+    noteDiv.appendChild(delBtn);
+    notesList.appendChild(noteDiv);
+  });
+}
+
+addTaskBtn.addEventListener("click",()=>{
+  const val=taskInput.value.trim();
+  if(!val) return;
+  tasks[activeList]=tasks[activeList]||[];
+  tasks[activeList].push({ text:val, completed:false, priority:taskPriority.value, date:taskDate.value });
+  taskInput.value=""; taskDate.value="";
+  saveTasks(); renderTasks();
+});
+
+addNoteBtn.addEventListener("click",()=>{
+  const val=noteInput.value.trim();
+  if(!val) return;
+  notes.push(val); noteInput.value="";
+  saveNotes(); renderNotes();
+});
+
+taskInput.addEventListener("keypress", e=>{ if(e.key==="Enter") addTaskBtn.click(); });
+noteInput.addEventListener("keypress", e=>{ if(e.key==="Enter") addNoteBtn.click(); });
+searchInput.addEventListener("input", renderTasks);
+
+listBtns.forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    listBtns.forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    activeList=btn.dataset.list;
+    listTitle.textContent=activeList;
+
+    if(activeList==="Journal"){
+      taskListEl.style.display="none";
+      footer.style.display="none";
+      journalEl.style.display="flex";
+      renderNotes();
+    } else {
+      taskListEl.style.display="flex";
+      footer.style.display="grid";
+      journalEl.style.display="none";
+      renderTasks();
+    }
+  });
+});
+
+renderTasks();
+</script>
+</body>
+</html>
